@@ -28,6 +28,7 @@ namespace FORWARD
 		const glm::vec4* rotations,
 		const float* opacities,
 		const float* shs,
+		const float* sh_objs,
 		bool* clamped,
 		const float* transMat_precomp,
 		const float* colors_precomp,
@@ -58,6 +59,7 @@ namespace FORWARD
 		float focal_x, float focal_y,
 		const float2* points_xy_image,
 		const float* features,
+		const float* obj_features,
 		const float* transMats,
 		const float* depths,
 		const float4* normal_opacity,
@@ -65,7 +67,8 @@ namespace FORWARD
 		uint32_t* n_contrib,
 		const float* bg_color,
 		float* out_color,
-		float* out_others);
+		float* out_others,
+		float* out_objects);
 }
 
 
