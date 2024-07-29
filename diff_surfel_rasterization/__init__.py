@@ -94,11 +94,16 @@ class _RasterizeGaussians(torch.autograd.Function):
                 raise ex
         else:
             num_rendered, color, depth, objects, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
-
+        torch.cuda.synchronize()
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings
         ctx.num_rendered = num_rendered
         ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, sh_objs, geomBuffer, binningBuffer, imgBuffer)
+        radii_ = radii
+        torch.cuda.synchronize()
+        print("rasterize_forward")
+        print(radii.size())
+        print(radii.dtype)
         return color, radii, depth, objects
 
     @staticmethod

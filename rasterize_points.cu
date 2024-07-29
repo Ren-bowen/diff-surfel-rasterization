@@ -88,7 +88,12 @@ RasterizeGaussiansCUDA(
   torch::Tensor out_others = torch::full({3+3+1, H, W}, 0.0, float_opts);
   torch::Tensor out_objects = torch::full({NUM_OBJECTS, H, W}, 0.0, float_opts);
   torch::Tensor radii = torch::full({P}, 0, means3D.options().dtype(torch::kInt32));
-  
+    cudaError_t err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl;
+    } else {
+		std::cerr << "CUDA Success" << std::endl;
+	}
   torch::Device device(torch::kCUDA);
   torch::TensorOptions options(torch::kByte);
   torch::Tensor geomBuffer = torch::empty({0}, options.device(device));
@@ -130,11 +135,17 @@ RasterizeGaussiansCUDA(
 		tan_fovy,
 		prefiltered,
 		out_color.contiguous().data<float>(),
-		out_others.contiguous().data<float>(),
 		out_objects.contiguous().data<float>(),
+		out_others.contiguous().data<float>(),
 		radii.contiguous().data<int>(),
 		debug);
   }
+    cudaError_t err_ = cudaDeviceSynchronize();
+    if (err_ != cudaSuccess) {
+        std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl;
+    } else {
+		std::cerr << "CUDA Success_" << std::endl;
+	}
   return std::make_tuple(rendered, out_color, out_others, out_objects, radii, geomBuffer, binningBuffer, imgBuffer);
 }
 
