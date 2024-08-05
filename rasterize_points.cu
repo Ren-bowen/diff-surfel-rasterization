@@ -92,7 +92,7 @@ RasterizeGaussiansCUDA(
     if (err != cudaSuccess) {
         std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl;
     } else {
-		std::cerr << "CUDA Success" << std::endl;
+		// std::cerr << "CUDA Success" << std::endl;
 	}
   torch::Device device(torch::kCUDA);
   torch::TensorOptions options(torch::kByte);
@@ -144,7 +144,7 @@ RasterizeGaussiansCUDA(
     if (err_ != cudaSuccess) {
         std::cerr << "CUDA Error: " << cudaGetErrorString(err) << std::endl;
     } else {
-		std::cerr << "CUDA Success_" << std::endl;
+		// std::cerr << "CUDA Success_" << std::endl;
 	}
   return std::make_tuple(rendered, out_color, out_others, out_objects, radii, geomBuffer, binningBuffer, imgBuffer);
 }

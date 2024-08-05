@@ -84,6 +84,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         )
 
         # Invoke C++/CUDA rasterizer
+        assert not torch.isnan(sh_objs).any()
         if raster_settings.debug:
             cpu_args = cpu_deep_copy_tuple(args) # Copy them before they can be corrupted
             try:
@@ -101,9 +102,9 @@ class _RasterizeGaussians(torch.autograd.Function):
         ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, sh_objs, geomBuffer, binningBuffer, imgBuffer)
         radii_ = radii
         torch.cuda.synchronize()
-        print("rasterize_forward")
-        print(radii.size())
-        print(radii.dtype)
+        # print("rasterize_forward")
+        # print(radii.size())
+        # print(radii.dtype)
         return color, radii, depth, objects
 
     @staticmethod
@@ -113,7 +114,9 @@ class _RasterizeGaussians(torch.autograd.Function):
         num_rendered = ctx.num_rendered
         raster_settings = ctx.raster_settings
         colors_precomp, means3D, scales, rotations, cov3Ds_precomp, radii, sh, sh_objs, geomBuffer, binningBuffer, imgBuffer = ctx.saved_tensors
-
+        # sh_objs[0, 0] = float('nan')
+        assert not torch.isnan(sh_objs).any()
+        # print("object.size(): ", sh_objs.size())
         # Restructure args as C++ method expects them
         args = (raster_settings.bg,
                 means3D, 
@@ -164,7 +167,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             grad_cov3Ds_precomp,
             None,
         )
-
+        assert not torch.isnan(grad_means2D).any()
         return grads
 
 class GaussianRasterizationSettings(NamedTuple):

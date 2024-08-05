@@ -346,6 +346,36 @@ int CudaRasterizer::Rasterizer::forward(
 	return num_rendered;
 }
 
+__global__ void checkForNaN(const float* array, int size, bool* result) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        if (isnan(array[idx])) {
+            *result = true;
+        }
+    }
+}
+
+bool containsNaN(const float* d_array, int size) {
+    // Allocate memory for the result on the host and device
+    bool h_result = false;
+    bool* d_result;
+    cudaMalloc((void**)&d_result, sizeof(bool));
+    cudaMemcpy(d_result, &h_result, sizeof(bool), cudaMemcpyHostToDevice);
+
+    // Launch the kernel with an appropriate number of threads
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
+    checkForNaN<<<blocksPerGrid, threadsPerBlock>>>(d_array, size, d_result);
+
+    // Copy the result back to the host
+    cudaMemcpy(&h_result, d_result, sizeof(bool), cudaMemcpyDeviceToHost);
+
+    // Free the device memory
+    cudaFree(d_result);
+
+    return h_result;
+}
+
 // Produce necessary gradients for optimization, corresponding
 // to forward render pass
 void CudaRasterizer::Rasterizer::backward(

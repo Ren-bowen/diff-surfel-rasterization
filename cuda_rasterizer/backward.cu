@@ -11,8 +11,12 @@
 
 #include "backward.h"
 #include "auxiliary.h"
+#include <cmath>
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
+#include <iostream>
+#include <fstream>
+#include <string>
 namespace cg = cooperative_groups;
 
 // Backward pass for conversion of spherical harmonics to RGB for
@@ -138,6 +142,38 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	dL_dmeans[idx] += glm::vec3(dL_dmean.x, dL_dmean.y, dL_dmean.z);
 }
 
+__global__ void checkForNaN1(const float* array, int size, bool* result) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	printf("isnan2(array[0]) = %d\n", array[0]);
+    if (idx < size) {
+        if (isnan(array[idx])) {
+			printf("array[%d] is nan\n", idx);
+            *result = true;
+        }
+    }
+}
+
+bool containsNaN1(const float* d_array, int size) {
+    // Allocate memory for the result on the host and device
+    bool h_result = false;
+    bool* d_result;
+    cudaMalloc((void**)&d_result, sizeof(bool));
+    cudaMemcpy(d_result, &h_result, sizeof(bool), cudaMemcpyHostToDevice);
+
+    // Launch the kernel with an appropriate number of threads
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
+	printf("isnan1(d_array[0]) = %d\n", d_array);
+    checkForNaN1<<<blocksPerGrid, threadsPerBlock>>>(d_array, size, d_result);
+
+    // Copy the result back to the host
+    cudaMemcpy(&h_result, d_result, sizeof(bool), cudaMemcpyDeviceToHost);
+
+    // Free the device memory
+    cudaFree(d_result);
+
+    return h_result;
+}
 
 // Backward version of the rendering procedure.
 template <uint32_t C, uint32_t O>
@@ -152,8 +188,8 @@ renderCUDA(
 	const float4* __restrict__ normal_opacity,
 	const float* __restrict__ transMats,
 	const float* __restrict__ colors,
-	const float* __restrict__ depths,
 	const float* __restrict__ objects,
+	const float* __restrict__ depths,
 	const float* __restrict__ final_Ts,
 	const uint32_t* __restrict__ n_contrib,
 	const float* __restrict__ dL_dpixels,
@@ -166,6 +202,16 @@ renderCUDA(
 	float* __restrict__ dL_dcolors,
 	float* __restrict__ dL_dobjects)
 {
+	bool r = true;
+	for (int i = 0; i < 16383 * 16; i++) {
+		if (isnan(objects[i])) {
+			r = false;
+		}
+	}
+	if (!r) {
+		printf("render CUDA objects contains nan\n");
+		assert flase;
+	}
 	// We rasterize again. Compute necessary block info.
 	auto block = cg::this_thread_block();
 	const uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
@@ -197,7 +243,15 @@ renderCUDA(
 	// product of all (1 - alpha) factors. 
 	const float T_final = inside ? final_Ts[pix_id] : 0;
 	float T = T_final;
-
+	for (int i = 0; i < 16383 * 16; i++) {
+		if (isnan(objects[i])) {
+			r = false;
+		}
+	}
+	if (!r) {
+		printf("1 render CUDA objects contains nan\n");
+		assert false;
+	}
 	// We start from the back. The ID of the last contributing
 	// Gaussian is known from each pixel from the forward.
 	uint32_t contributor = toDo;
@@ -207,7 +261,15 @@ renderCUDA(
 	float accum_rec_obj[O] = { 0 };
 	float dL_dpixel[C];
 	float dL_dpixel_obj[O];
-
+	for (int i = 0; i < 16383 * 16; i++) {
+		if (isnan(objects[i])) {
+			r = false;
+		}
+	}
+	if (!r) {
+		printf("2 render CUDA objects contains nan\n");
+		assert false;
+	}
 #if RENDER_AXUTILITY
 	float dL_dreg;
 	float dL_ddepth;
@@ -244,8 +306,12 @@ renderCUDA(
 	if (inside){
 		for (int i = 0; i < C; i++)
 			dL_dpixel[i] = dL_dpixels[i * H * W + pix_id];
-		for (int i = 0; i < O; i++)
+		for (int i = 0; i < O; i++){
+			if (isnan(dL_dpixels_objs[i * H * W + pix_id])) {
+				printf("dL_dpixels_objs[%d] is nan\n", i);
+			}
 			dL_dpixel_obj[i] = dL_dpixels_objs[i * H * W + pix_id];
+		}
 	}
 
 	float last_alpha = 0;
@@ -258,6 +324,15 @@ renderCUDA(
 	const float ddely_dy = 0.5 * H;
 
 	// Traverse all Gaussians
+	for (int i = 0; i < 16383 * 16; i++) {
+		if (isnan(objects[i])) {
+			r = false;
+		}
+	}
+	if (!r) {
+		printf("3 render CUDA objects contains nan\n");
+		assert false;
+	}
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
 	{
 		// Load auxiliary data into shared memory, start in the BACK
@@ -275,8 +350,13 @@ renderCUDA(
 			collected_Tw[block.thread_rank()] = {transMats[9 * coll_id+6], transMats[9 * coll_id+7], transMats[9 * coll_id+8]};
 			for (int i = 0; i < C; i++)
 				collected_colors[i * BLOCK_SIZE + block.thread_rank()] = colors[coll_id * C + i];
-			for (int i = 0; i < O; i++)
+			for (int i = 0; i < O; i++){
 				collected_objects[i * BLOCK_SIZE + block.thread_rank()] = objects[coll_id * O + i];
+				if (isnan(objects[coll_id * O + i])) {
+					printf("objects[%d] is nan\n", coll_id * O + i);
+					assert(false);
+				}
+			}
 				// collected_depths[block.thread_rank()] = depths[coll_id];
 		}
 		block.sync();
@@ -349,7 +429,23 @@ renderCUDA(
 			for (int ch = 0; ch < O; ch++)
 			{
 				const float o = collected_objects[ch * BLOCK_SIZE + j];
+				if (isnan(o)) {
+					printf("o is nan\n");
+					//assert(false);
+				}
 				accum_rec_obj[ch] = last_alpha * last_object[ch] + (1.f - last_alpha) * accum_rec_obj[ch];
+				if (isnan(last_object[ch])) {
+					printf("last_object[%d] is nan\n", ch);
+					//assert(false);
+				}
+				if (isnan(last_alpha)) {
+					printf("last_alpha is nan\n");
+					//assert(false);
+				}
+				if (isnan(accum_rec_obj[ch])) {
+					printf("accum_rec_obj[%d] is nan\n", ch);
+					//assert(false);
+				}
 				last_object[ch] = o;
 
 				const float dL_dchannel_obj = dL_dpixel_obj[ch];
@@ -452,6 +548,10 @@ renderCUDA(
 				atomicAdd(&dL_dmean2D[global_id].x, dL_dG * dG_ddelx); // not scaled
 				atomicAdd(&dL_dmean2D[global_id].y, dL_dG * dG_ddely); // not scaled
 				atomicAdd(&dL_dtransMat[global_id * 9 + 8],  dL_dz); // propagate depth loss
+				// check if dL_dmean2D have nan
+				if (isnan(dL_dmean2D[global_id].x) || isnan(dL_dmean2D[global_id].y)) {
+					printf("dL_dmean2D[%d] is nan\n", global_id);
+				}
 			}
 
 			// Update gradients w.r.t. opacity of the Gaussian
@@ -601,7 +701,14 @@ __device__ void compute_transmat_aabb(
 		(float)glm::dot(dL_dRS[0], R[0]),
 		(float)glm::dot(dL_dRS[1], R[1])
 	);
+	// check if dL_dmeans have nan
+	if (isnan(dL_dmeans[idx].x) || isnan(dL_dmeans[idx].y) || isnan(dL_dmeans[idx].z)) {
+		printf("dL_dmeans[%d] is nan 1\n", idx);
+	}
 	dL_dmeans[idx] = glm::vec3(dL_dM[2]);
+	if (isnan(dL_dmeans[idx].x) || isnan(dL_dmeans[idx].y) || isnan(dL_dmeans[idx].z)) {
+		printf("dL_dmeans[%d] is nan 2\n", idx);
+	}
 }
 
 template<int C>
